@@ -1,0 +1,5 @@
+model,n_resp_full,balanced_complete_case,share
+gptoss,7526,7434,0.9877757108689875
+haiku,7526,7526,1.0
+ministral,7526,7419,0.9857826202498007
+qwen,7526,7522,0.9994685091682168

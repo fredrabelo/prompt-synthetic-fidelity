@@ -1,0 +1,101 @@
+{
+ "system_prompt": "You are simulating one survey respondent in a social-science replication study. Answer strictly as this person would, using only the facts given. For each answer, briefly explain (1 short sentence) the reasoning behind it, in character. Output ONLY the structured fields requested.",
+ "narrative_template": "It is [YEAR]. You are a [AGE] year-old, [MARST], [RACETH] [GENDER] with [EDUCATION] making [INCOME] per year, living in the United States. You are [IDEO], [REGIS] [PID] who [INTEREST] pays attention to what's going on in government and politics.",
+ "tool_name": "answer",
+ "tool_schema": {
+  "type": "object",
+  "properties": {
+   "answers": {
+    "minItems": 11,
+    "maxItems": 11,
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "synthetic_question_key": {
+       "type": "string",
+       "enum": [
+        "thermometer_republican_party",
+        "thermometer_democratic_party",
+        "thermometer_liberals",
+        "thermometer_conservatives",
+        "thermometer_muslims",
+        "thermometer_gays_lesbians",
+        "thermometer_christians",
+        "thermometer_asian_americans",
+        "thermometer_black_americans",
+        "thermometer_white_americans",
+        "thermometer_jews"
+       ]
+      },
+      "value": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 100
+      },
+      "explanation": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "required": [
+      "synthetic_question_key",
+      "value",
+      "explanation"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "required": [
+   "answers"
+  ],
+  "additionalProperties": false
+ },
+ "subsample_seed": 20261001,
+ "blocks": {
+  "full": "draw 0, original order: A/B/C for all 7,526 respondents, D for the 5,115 Democrat/Republican respondents",
+  "cons": "draws 1-4, original order: 250-partisan subsample, A-D",
+  "rev": "draw 0, reversed item order: 250-partisan subsample, A-D"
+ },
+ "models": {
+  "haiku": {
+   "label": "Claude Haiku 4.5",
+   "model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+   "serving_mode": "batch",
+   "temperature": 0.3,
+   "reasoning_effort": null,
+   "max_tokens": 1500
+  },
+  "ministral": {
+   "label": "Ministral 3B",
+   "model_id": "mistral.ministral-3-3b-instruct",
+   "serving_mode": "sync",
+   "temperature": 0.3,
+   "reasoning_effort": null,
+   "max_tokens": 8000
+  },
+  "qwen": {
+   "label": "Qwen3 32B",
+   "model_id": "qwen.qwen3-32b-v1:0",
+   "serving_mode": "batch",
+   "temperature": 0.3,
+   "reasoning_effort": null,
+   "max_tokens": 8000
+  },
+  "gptoss": {
+   "label": "GPT-OSS-120B",
+   "model_id": "openai.gpt-oss-120b-1:0",
+   "serving_mode": "batch",
+   "temperature": 0.3,
+   "reasoning_effort": "low",
+   "max_tokens": 8000
+  }
+ }
+}

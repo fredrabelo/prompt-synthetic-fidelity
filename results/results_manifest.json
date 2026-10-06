@@ -1,0 +1,32 @@
+{
+ "bootstrap_resamples": 1000,
+ "seed": 42,
+ "models": null,
+ "allow_partial": false,
+ "skipped": [],
+ "bootstrap_resamples_conditional": 1000,
+ "warnings": [],
+ "n_calls": 130772,
+ "input_file_sha256": {
+  "data/calls.csv": "db8d16907c88b87494c18803b4032a84281225a51ae49d541f9d5ad6237bca2d",
+  "data/respondents.csv": "2ea5700e33cff72eb1be1b77d3c7b201e1ddba998110edf5582a92d4d71b622b",
+  "data/human_benchmark.csv": "e7e807ab56dba9e3f091249d267a53a8ee3a767d44e9f310ebb73d02766fe036",
+  "data/subsample_250.json": "d7226aab0ebcc709d12421d1b7309bfecde43ab7f0853c561a431022fbe0ca2e"
+ },
+ "analysis_code_sha256": {
+  "a1_validity.py": "8cf5e5698120213aae8806830b34e1310272346803805082655d74daa3a81b51",
+  "a2_fidelity.py": "48bf4639f526cb802933fcab4a30eb7920e26e3db9e59d7af3891adbb9c9d048",
+  "a3_agreement.py": "1224516643044439ca37257420311e119f39d1a807009afc9e5aaa9f35acc8fd",
+  "a4_reliability.py": "df8067f45ab7f218588f6f4aa825af5731647aaf7954e885c2088d14803f1710",
+  "a5_order.py": "a8d97216d8bd22ed95cfc19a265af99f87c33c00eb84585d538093c508cd1d8f",
+  "a6_mirror.py": "b8a4751cc4753b8fde331fee858bb2c57e007da9f1faeb7812a66723d71d4e36",
+  "a8_summary.py": "500b25bc5d7c3c5e9540641dcaa6fe3b066944fb8145ba2b72d3330053824e34",
+  "build_tables.py": "49728305636b23b7881a29f8f43591f43dcf7e28d0f94ed5abde80f5a8abce5b",
+  "common.py": "de04ecaefe1ac14a01a3a09dbe2a31a8ffb08b663d4c1b16cda8ec08fdf28bad",
+  "export_long.py": "2b3188371cc59b037bcefce9132a0dc390b15d48913ab5ae289e0cb80eeef464",
+  "make_figures.py": "36afbbbdf8586d6884e5401b7622b3b7bcf65c7fcc3d3d67f0b56d4b0056a54b",
+  "run_all.py": "670eb383a1220603b2ac6f982d80dbf691b61af8b800dd4c6d17351101e1ffb3",
+  "a7_conditional.R": "fce52906c135d1745dcaf682bf89c8f57923d39a385f7006a75c7c4813a0866e"
+ },
+ "elapsed_seconds": 3195
+}

@@ -1,67 +1,75 @@
-# Does Prompt Structure Improve Synthetic Respondent Fidelity? — Replication Package
+# When Does Prompt Structure Matter? A Multi-Model Evaluation of Synthetic Survey Respondents
 
-Data, analysis code, and figures for the paper *"Does Prompt Structure Improve
-Synthetic Respondent Fidelity? A Controlled Test of Persona Design"* (submitted,
-2026). The paper replicates Bisbee, Clinton, Dorff, Kenkel & Larson (2024),
-*"Synthetic Replacements for Human Survey Data? The Perils of Large Language
-Models,"* *Political Analysis* 32(4):401–416, and tests whether restructuring
-LLM-based synthetic respondents' prompts — rather than adding new information —
-recovers the heterogeneity that simple persona prompting loses.
+Replication package for the paper of the same name (*Survey Practice*, Special Issue on Artificial Intelligence
+Assisted Surveys). The study asks whether the way respondent information is written into a prompt changes how well
+LLM-based synthetic respondents reproduce human survey answers. It uses 7,526 matched respondents from the ANES
+2016/2020 cumulative file (the ground truth of Bisbee et al. 2024), eleven feeling thermometers, and four models
+(Claude Haiku 4.5, Ministral 3B, Qwen3 32B, GPT-OSS-120B).
 
-This repository does **not** include the underlying agent/prompting platform used
-to generate the synthetic responses — see [Reproducibility scope](#reproducibility-scope)
-below. It includes everything needed to independently verify every number and
-figure reported in the paper from the released data.
+Prompt conditions (same facts, same questions; only the respondent block changes):
 
-## Structure
+| Condition | Respondent information | Respondents |
+|---|---|---|
+| A | none (question template only) | 7,526 |
+| B | eleven attributes plus country, as a narrative persona | 7,526 |
+| C | the same facts in the same order, one labelled field per line | 7,526 |
+| D | B with party identification and ideology mirrored (Democrat/Republican respondents) | 5,115 |
+
+Design blocks per model (32,693 calls, 130,772 in total): `full` (draw 0, A/B/C for everyone, D for partisans),
+`cons` (four more identical draws for a fixed stratified subsample of 250 partisans, A–D) and `rev` (the same subsample
+with the eleven items in reversed order).
+
+## Repository layout
 
 ```
-data/         Respondent attributes, human benchmark, and all synthetic responses (CSV)
-analysis/     Scripts that turn data/ into every statistic and figure in the paper
-figures/      Output of the analysis scripts — the exact PNGs used in the paper
+data/        ANES respondent attributes and benchmark, instrument, protocol, and every model call
+prompts/     Exact prompt construction (build_prompts.py) with hash verification against data/calls.csv
+analysis/    Pipeline that turns data/ into every table and figure in the paper (+ tests/)
+results/     Output of the pipeline (CSV tables, summary.json, results_manifest.json)
+figures/     Figures used in the paper
 ```
 
-## Reproducing the paper's results
+See [`data/README.md`](data/README.md) for file formats and licenses.
+
+## Reproducing the results
 
 ```bash
-cd analysis
-pip install pandas numpy matplotlib
-python3 bootstrap_analysis.py          # -> bootstrap_summary.json (Table 1, Table 2, Appendix)
-python3 make_figure1_headline.py       # -> ../figures/figure1_headline.png
+pip install -r requirements.txt
+Rscript -e 'install.packages(c("fixest", "dplyr", "tidyr", "readr"))'   # conditional fidelity
 
-Rscript conditional_fidelity_analysis.R  # -> conditional_fidelity_results.csv (RQ4 / Table 1)
-# requires: install.packages(c("fixest","dplyr","tidyr","readr","stringr","forcats"))
-python3 make_figure3_coefficients.py   # -> ../figures/figure3_coefficients.png
-
-python3 make_figure2_distributions.py  # -> ../figures/figure2_distributions.png
+python3 prompts/build_prompts.py verify        # every call's prompt hash is reproduced from respondents.csv
+python3 analysis/tests/test_pipeline.py        # pipeline checked against synthetic data with known answers
+python3 analysis/run_all.py --b 1000           # all analyses -> results/ (conditional fidelity step takes ~35 min)
+python3 analysis/build_tables.py results       # results/tables.md and results/facts.json
+python3 analysis/make_figures.py results       # -> figures/
 ```
 
-Each script is self-contained and reads only from `../data/`. No database, API
-key, or external service is required — this is exactly the pipeline used to
-produce every number in the paper.
+`run_all.py` refuses incomplete or inconsistent data (unit counts, duplicates, composition of each block), writes
+`results/results_manifest.json` with the SHA-256 of every input file and analysis script, and uses a fixed seed
+(`--seed`, default 42). `analysis/README_ANALYSIS.md` defines every statistic.
+
+All tables in `results/` regenerate exactly from the stored draws, except the bootstrap bounds of the conditional-fidelity
+analysis (`results/conditional/`): they come from a parallel R bootstrap and a rerun changes them by less than 0.5
+percentage points. The files shipped here are the ones reported in the paper; point estimates are exact.
 
 ## Reproducibility scope
 
-The synthetic responses in `data/synthetic_responses.csv` were generated using an
-internal, not-publicly-released research platform, calling `claude-haiku-4-5` via
-the Anthropic Message Batches API. We do not release that platform's source code.
-The paper's Appendix reproduces the complete, literal prompt text (system prompt,
-all four condition templates, question template, and output schema) used to
-generate every response, which — combined with the data in this repository — is
-sufficient to (a) verify every statistic and figure in the paper, and (b) regenerate
-equivalent synthetic responses against the same model using only the Appendix's
-prompts and any standard LLM API client.
+The responses in `data/calls.csv` were generated through Amazon Bedrock (Haiku 4.5, Qwen3 32B and GPT-OSS-120B in
+batch mode; Ministral 3B synchronously) at temperature 0.3 (GPT-OSS with reasoning effort `low`) with a forced
+tool call, no conversational memory and no retries of malformed outputs. The execution harness itself is not
+distributed. Everything needed to repeat the calls is: `prompts/build_prompts.py` (byte-exact system prompt,
+user messages and item order), `data/protocol.json` (model identifiers, parameters, tool schema) and
+`data/respondents.csv`. Re-running the models will not reproduce the stored draws (sampling is stochastic and hosted
+models change); the analysis reproduces from the stored draws.
 
 ## License
 
-See `data/README.md` for the applicable licenses (they differ by file: ANES-derived
-fields carry ANES's own terms of use; newly generated data, figures, and analysis
-code are CC BY 4.0 / MIT respectively).
+Code: MIT (`LICENSE`). Newly generated data, figures and tables: CC BY 4.0. ANES-derived fields remain subject to the
+ANES Terms of Use; details in `data/README.md`.
 
 ## Citation
 
-If you use this data or code, please cite both this paper (details to be added on
-acceptance) and the original study:
+Please cite the paper (details to be added on publication) and the original study:
 
 ```bibtex
 @article{bisbee2024synthetic,
