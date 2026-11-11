@@ -1,0 +1,24 @@
+{
+  "seed": 20261111,
+  "bootstrap_resamples": 1000,
+  "n_calls": 130772,
+  "n_person_wave_records": 7526,
+  "n_unique_people": 6027,
+  "n_subsample_unique_people": 247,
+  "cv_folds": 5,
+  "cv_intervals": "Conditional on frozen out-of-fold predictions; no nested refit.",
+  "mirror_intervals": "Person-cluster bootstrap retaining all observed waves, refitting human OLS in each resample.",
+  "format": "Orthogonal moment decomposition; cross-item covariance retained; negative component estimates not truncated.",
+  "order": "Single reversed call; variance decomposition depends on reverse/original noise covariance assumption. Multipliers .5,1,2.",
+  "person_clusters_sha256": "52cc693aeca030297adf7897c93da70ab99992d1116e2ddf958aa800e9ac98d1",
+  "inputs": {
+    "subsample_250.json": "d7226aab0ebcc709d12421d1b7309bfecde43ab7f0853c561a431022fbe0ca2e",
+    "respondents.csv": "2ea5700e33cff72eb1be1b77d3c7b201e1ddba998110edf5582a92d4d71b622b",
+    "protocol.json": "01a1013caad130cb3347a6226c0f807330fa5e18dd24b45577d2c7804275f197",
+    "instrument.json": "235efe210b46d2b28d767eb5abd7d769933341257f49d16c8aa6ae7c059773c5",
+    "human_benchmark.csv": "e7e807ab56dba9e3f091249d267a53a8ee3a767d44e9f310ebb73d02766fe036",
+    "calls.csv": "db8d16907c88b87494c18803b4032a84281225a51ae49d541f9d5ad6237bca2d",
+    "README.md": "bdecca5da4002234933ba6c0e91ce0f7155e84262f0850ba63ae1f27d6b52ba9"
+  },
+  "script_sha256": "be8574e7f6eca8bbd9c19d372d42cb4041106ef6c60e18ee5543348dd865dc89"
+}

@@ -27,6 +27,7 @@ prompts/     Exact prompt construction (build_prompts.py) with hash verification
 analysis/    Pipeline that turns data/ into every table and figure in the paper (+ tests/)
 results/     Output of the pipeline (CSV tables, summary.json, results_manifest.json)
 figures/     Figures used in the paper
+revision_round2/   Second-revision analyses (November 2026): code, person linkage, results, figures
 ```
 
 See [`data/README.md`](data/README.md) for file formats and licenses.
@@ -51,6 +52,40 @@ python3 analysis/make_figures.py results       # -> figures/
 All tables in `results/` regenerate exactly from the stored draws, except the bootstrap bounds of the conditional-fidelity
 analysis (`results/conditional/`): they come from a parallel R bootstrap and a rerun changes them by less than 0.5
 percentage points. The files shipped here are the ones reported in the paper; point estimates are exact.
+
+## Second revision (November 2026)
+
+`revision_round2/` adds analyses that respond to the first round of review. It leaves everything above untouched and
+reads the same frozen data (all 130,772 calls); it makes **no new LLM calls**. It adds:
+
+- out-of-fold benchmarks on the same eleven attributes (five-fold OLS and year-mean predictors) and per-item
+  fidelity (individual-level MAE, within-item SD ratio, correlation, rank and agreement statistics);
+- an exact per-item squared-error decomposition (bias, SD mismatch, imperfect association);
+- item-specific ICC(1), including the no-information condition A as a null check;
+- comparison of the mean of five calls with the OLS benchmark on the 250-partisan subsample;
+- a method-of-moments variance decomposition of the C - B contrast and its response-scale partition, with
+  generation noise estimated from the repeated draws;
+- signed order effects (reversed vs. five-draw original order), with available-case and noise-assumption sensitivity;
+- a regression-adjusted human party-and-ideology reference for the mirror condition (D);
+- **person-level grouping**: 1,499 people appear in both ANES waves, so the 7,526 records are 6,027 distinct people.
+  `revision_round2/data/person_clusters.csv` links the waves using the official ANES panel identifiers
+  (provenance in `revision_round2/data/README.md`). Cross-validation folds keep all waves of a person together and
+  all new bootstrap intervals resample people.
+
+Note: the dispersion statistic `sd_pct` documented above (pooled SD) belongs to the first version. The second-revision
+pipeline replaces it with the mean of within-item SD ratios, which is the quantity reported by `revision_round2/results/fidelity.csv`.
+
+```bash
+pip install -r requirements.txt                                      # numpy, pandas, matplotlib
+OPENBLAS_NUM_THREADS=1 python3 revision_round2/analysis/reanalyze.py   # -> revision_round2/results/ (seed 20261111, 1,000 bootstrap resamples)
+python3 revision_round2/analysis/test_reanalysis.py                    # numerical checks; prints PASS lines
+python3 revision_round2/analysis/make_figures.py                       # -> revision_round2/figures/
+```
+
+Run from the repository root (any working directory works). Results, with a manifest of input hashes, seed and
+settings (`results/manifest.json`), are in [`revision_round2/results/`](revision_round2/results/); see
+[`revision_round2/README.md`](revision_round2/README.md) for a file guide. The pipeline is also runnable from the
+replication archive, where the first-version data live in the sibling `github_release/` folder.
 
 ## Reproducibility scope
 
