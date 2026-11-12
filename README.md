@@ -2,7 +2,7 @@
 
 Replication package for the paper of the same name (*Survey Practice*, Special Issue on Artificial Intelligence
 Assisted Surveys). The study asks whether the way respondent information is written into a prompt changes how well
-LLM-based synthetic respondents reproduce human survey answers. It uses 7,526 matched respondents from the ANES
+LLM-based synthetic respondents reproduce human survey answers. It uses 7,526 matched person-wave records (6,027 distinct people; see `revision_round2/`) from the ANES
 2016/2020 cumulative file (the ground truth of Bisbee et al. 2024), eleven feeling thermometers, and four models
 (Claude Haiku 4.5, Ministral 3B, Qwen3 32B, GPT-OSS-120B).
 
@@ -55,7 +55,7 @@ percentage points. The files shipped here are the ones reported in the paper; po
 
 ## Second revision (November 2026)
 
-`revision_round2/` adds analyses that respond to the first round of review. It leaves everything above untouched and
+`revision_round2/` adds further analyses of the same study. It leaves everything above untouched and
 reads the same frozen data (all 130,772 calls); it makes **no new LLM calls**. It adds:
 
 - out-of-fold benchmarks on the same eleven attributes (five-fold OLS and year-mean predictors) and per-item
@@ -72,8 +72,9 @@ reads the same frozen data (all 130,772 calls); it makes **no new LLM calls**. I
   (provenance in `revision_round2/data/README.md`). Cross-validation folds keep all waves of a person together and
   all new bootstrap intervals resample people.
 
-Note: the dispersion statistic `sd_pct` documented above (pooled SD) belongs to the first version. The second-revision
-pipeline replaces it with the mean of within-item SD ratios, which is the quantity reported by `revision_round2/results/fidelity.csv`.
+Note: the first-version outputs above treat the 7,526 records as independent respondents (bootstrap over records) and
+use a pooled-SD dispersion statistic (`sd_pct`). The second-revision pipeline replaces both: it clusters by person and
+reports the mean of within-item SD ratios (`revision_round2/results/fidelity.csv`).
 
 ```bash
 pip install -r requirements.txt                                      # numpy, pandas, matplotlib

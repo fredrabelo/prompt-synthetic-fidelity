@@ -2,7 +2,7 @@
 
 | File | Content |
 |---|---|
-| `respondents.csv` | One row per ANES respondent (N = 7,526): `external_key, year, age, raceth, gender, marst, education, income, ideo, regis, pid, interest`. The eleven attributes used to build each persona, recoded from the ANES 2016/2020 cumulative file. |
+| `respondents.csv` | One row per ANES person-wave record (N = 7,526; 6,027 distinct people, see `revision_round2/data/`): `external_key, year, age, raceth, gender, marst, education, income, ideo, regis, pid, interest`. The eleven attributes used to build each persona, recoded from the ANES 2016/2020 cumulative file. |
 | `human_benchmark.csv` | Long format `external_key, thermometer, human_value`: the real ANES feeling thermometer (0–100) for each respondent and group, where answered. |
 | `instrument.json` | The eleven items: key and exact question text. |
 | `subsample_250.json` | The fixed subsample of 250 Democrat/Republican respondents (stratified by year × party × ideology, seed 20261001) used for repeated draws and reversed order. |
