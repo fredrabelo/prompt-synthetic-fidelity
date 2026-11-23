@@ -1,6 +1,5 @@
-"""Round-two analyses from frozen model draws. No API calls or model generation.
-Run from any directory: OPENBLAS_NUM_THREADS=1 python3 reanalyze.py
-All resampling uses explicit numpy generators. CV intervals condition on OOF fits.
+"""Reproduce the ANES and frozen-model analyses with person-grouped inference.
+Run from any directory: OPENBLAS_NUM_THREADS=1 python3 analysis/reanalyze.py
 """
 from pathlib import Path
 import os
@@ -9,16 +8,8 @@ import sys,json,hashlib
 import numpy as np
 import pandas as pd
 ROOT=Path(__file__).resolve().parents[1]
-def locate_release(root):
-    """Directory holding data/ and analysis/common.py of the first-version package.
-    In a repository clone it is the parent of revision_round2/; in the replication
-    archive it is the sibling folder github_release/."""
-    for cand in (root.parent, root.parent/'github_release'):
-        if (cand/'analysis/common.py').exists() and (cand/'data/respondents.csv').exists():
-            return cand
-    raise FileNotFoundError('first-version data and analysis/common.py not found next to revision_round2/')
-RELEASE=locate_release(ROOT)
-sys.path.insert(0,str(RELEASE/'analysis'))
+RELEASE=ROOT
+sys.path.insert(0,str(ROOT/'analysis'))
 from common import load_responses,load_human_and_attrs,wide,MODELS,THERMS,sub250_keys
 from a4_reliability import draws_array,noise_prep,noise_stats
 OUT=ROOT/'results';OUT.mkdir(exist_ok=True)
@@ -44,19 +35,19 @@ def metrics(h,s,w=None):
     return {'mae':(w@np.abs(hh-ss)/n).mean(1), 'r':np.nanmean(cr,axis=1),
             'sd_pct':(100*np.sqrt(vs/vh)).mean(1), 'abs_mean_bias':np.abs(ms-mh).mean(1)}
 
-def cluster_indices(keys,seed=SEED):
-    codes,unique=pd.factorize(person_ids.loc[list(keys)].to_numpy())
-    members=[np.flatnonzero(codes==i) for i in range(len(unique))]
+def weights(person_ids,seed=SEED):
+    person_ids=np.asarray(person_ids)
+    people,inverse=np.unique(person_ids,return_inverse=True)
+    n_people=len(people)
     rng=np.random.default_rng(seed)
-    for _ in range(B):
-        yield np.concatenate([members[i] for i in rng.integers(len(unique),size=len(unique))])
-
-def weights(keys,seed=SEED):
-    keys=list(keys);batch=[]
-    for ids in cluster_indices(keys,seed):
-        batch.append(np.bincount(ids,minlength=len(keys)).astype(float))
-        if len(batch)==100:yield np.stack(batch);batch=[]
-    if batch:yield np.stack(batch)
+    done=0
+    while done<B:
+        count=min(100,B-done)
+        sampled=rng.integers(n_people,size=(count,n_people))
+        cluster_w=np.zeros((count,n_people),dtype=np.float32)
+        np.add.at(cluster_w,(np.arange(count)[:,None],sampled),1)
+        yield cluster_w[:,inverse]
+        done+=count
 
 def design(a,levels,interaction=False):
     cols=[np.ones(len(a)),a.age.to_numpy(float)/100];names=['intercept','age/100']
@@ -70,14 +61,17 @@ def design(a,levels,interaction=False):
 
 print('loading',flush=True)
 L=load_responses();hw,attrs=load_human_and_attrs();H=hw.to_numpy(float);N=len(attrs)
+link=pd.read_csv(ROOT/'data'/'person_linkage.csv').set_index('external_key')
+person_id=link.loc[attrs.index,'person_id'].to_numpy(str)
+if len(person_id)!=N or pd.isna(person_id).any():raise ValueError('Person linkage does not cover every analysis record.')
+if link.index.has_duplicates:raise ValueError('Person linkage contains duplicate record keys.')
 levels={c:sorted(attrs[c].unique()) for c in attrs.columns if c!='age'}
 X,names=design(attrs,levels)
-person_ids=pd.read_csv(ROOT/'data/person_clusters.csv').set_index('external_key').person_id
-assert person_ids.index.is_unique and person_ids.loc[attrs.index].nunique()==6027
-codes,unique=pd.factorize(person_ids.loc[attrs.index].to_numpy())
-rng=np.random.default_rng(SEED);perm=rng.permutation(len(unique));groupfold=np.empty(len(unique),int);groupfold[perm]=np.arange(len(unique))%5
-fold=groupfold[codes]
-save('cv_folds',{'external_key':attrs.index,'person_id':person_ids.loc[attrs.index].to_numpy(),'fold':fold})
+# Assign each person once, independently of outcomes; all waves stay in one fold.
+rng=np.random.default_rng(SEED);people=np.unique(person_id);rng.shuffle(people)
+person_fold={pid:i%5 for i,pid in enumerate(people)}
+fold=np.array([person_fold[pid] for pid in person_id],dtype=int)
+save('cv_folds',{'external_key':attrs.index,'person_id':person_id,'fold':fold})
 P={k:np.full_like(H,np.nan) for k in ['Year mean (OOF)','OLS (OOF)','Year median (OOF)','Year mean (in sample)']}
 for t in range(11):
     valid=np.isfinite(H[:,t])
@@ -98,7 +92,7 @@ print('benchmarks and per-item fidelity',flush=True)
 rows=[];items=[];yearrows=[];comparison=[];decomp=[]
 for label,S in P.items():
     pt=metrics(H,S);acc={k:[] for k in pt}
-    for w in weights(attrs.index):
+    for w in weights(person_id):
         for k,v in metrics(H,S,w).items():acc[k].extend(v)
     row={'predictor':label}
     for k in pt:
@@ -114,7 +108,7 @@ for m in MODELS:
     for left,right in [(m+'/B',m+'/C'),(m+'/B','OLS (OOF)'),(m+'/C','OLS (OOF)'),(m+'/B','Year mean (OOF)'),(m+'/C','Year mean (OOF)')]:
         s1=P[left].copy();s2=P[right].copy();ok=np.isfinite(s1)&np.isfinite(s2);s1[~ok]=np.nan;s2[~ok]=np.nan
         v1=metrics(H,s1);v2=metrics(H,s2);acc={k:[] for k in v1}
-        for w in weights(attrs.index):
+        for w in weights(person_id):
             a,b=metrics(H,s1,w),metrics(H,s2,w)
             for k in acc:acc[k].extend(a[k]-b[k])
         r={'left':left,'right':right}
@@ -130,6 +124,23 @@ for m in MODELS:
             assert np.isclose(mse,bias2+scale+association,atol=1e-7)
             decomp.append({'model':m,'condition':c,'item':key,'n':len(h),'mse':mse,'bias_squared':bias2,'scale_mismatch':scale,'imperfect_association':association,'mae':abs(s-h).mean(),'r':r})
 save('fidelity',rows);save('fidelity_by_item',items);save('fidelity_by_year',yearrows);save('paired_comparisons',comparison);save('mse_decomposition',decomp)
+# Compare the five-call mean with OOF OLS on the exact same valid cells.
+five_draw_rows=[];ols_predictions=P['OLS (OOF)']
+sub_index=attrs.index.get_indexer(sub250_keys());sub_index=sub_index[sub_index>=0]
+for m in MODELS:
+    for c in 'BC':
+        A=draws_array(L.resp,m,c,sub250_keys()).mean(2);hh=H[sub_index];oo=ols_predictions[sub_index]
+        per={'llm_mae':[],'llm_r':[],'llm_sd_pct':[],'llm_abs_mean_bias':[],
+             'ols_mae':[],'ols_r':[],'ols_sd_pct':[],'ols_abs_mean_bias':[]}
+        for t in range(11):
+            ok=np.isfinite(A[:,t])&np.isfinite(hh[:,t])&np.isfinite(oo[:,t])
+            h=hh[ok,t];s=A[ok,t];o=oo[ok,t]
+            per['llm_mae'].append(np.mean(abs(s-h)));per['llm_r'].append(corr(h,s))
+            per['llm_sd_pct'].append(100*np.std(s)/np.std(h));per['llm_abs_mean_bias'].append(abs(np.mean(s)-np.mean(h)))
+            per['ols_mae'].append(np.mean(abs(o-h)));per['ols_r'].append(corr(h,o))
+            per['ols_sd_pct'].append(100*np.std(o)/np.std(h));per['ols_abs_mean_bias'].append(abs(np.mean(o)-np.mean(h)))
+        five_draw_rows.append({'model':m,'condition':c,**{k:np.nanmean(v) for k,v in per.items()}})
+save('five_draw_vs_ols',five_draw_rows)
 # Spearman uses average ranks, no scipy dependency. Full draw, item-specific pairs.
 print('agreement and ICC',flush=True)
 ag=[];agitems=[];ic=[];ics=[]
@@ -168,53 +179,62 @@ def components(D,V):
     assert np.isclose(sum(out[k] for k in obs),out['total_squared'])
     denom=sum(out[k] for k in ['respondent','item','respondent_item']);out['respondent_share']=out['respondent']/denom if denom>0 else np.nan
     return out
-def response_components(x,y):
-    vx=covariance(x);vy=covariance(y)
-    mid=(x.mean(2)+y.mean(2))/2
-    cm=components(mid,(vx+vy)/20)
-    cd=components(y.mean(2)-x.mean(2),(vx+vy)/5)
-    out={k:cm[k] for k in ['respondent','item','respondent_item']}
-    for k in ['grand_squared','respondent','item','respondent_item']:
-        out['condition' if k=='grand_squared' else 'condition_'+k]=cd[k]/4
-    out['generation']=np.trace((vx+vy)/2,axis1=1,axis2=2).mean()/x.shape[1]
-    total=sum(out.values())
-    return out,total
-
+def single_call_partition(Bdraws,Cdraws):
+    """Finite-design B/C variance partition on the single-call response scale."""
+    cov_b=covariance(Bdraws);cov_c=covariance(Cdraws)
+    midpoint=(Bdraws.mean(2)+Cdraws.mean(2))/2
+    contrast=Cdraws.mean(2)-Bdraws.mean(2)
+    mid=components(midpoint,(cov_b+cov_c)/20)
+    diff=components(contrast,(cov_b+cov_c)/5)
+    values={
+        'respondent':mid['respondent'],'item':mid['item'],'respondent_item':mid['respondent_item'],
+        'condition':diff['grand_squared']/4,'condition_respondent':diff['respondent']/4,
+        'condition_item':diff['item']/4,'condition_respondent_item':diff['respondent_item']/4,
+        'generation':float((np.trace(cov_b,axis1=1,axis2=2)+np.trace(cov_c,axis1=1,axis2=2)).mean()/(2*Bdraws.shape[1]))
+    }
+    values['total_single_call_variance']=sum(values.values())
+    return values
 print('format and order decomposition',flush=True)
-vr=[];order=[];oc=[];response_rows=[];averaged=[];available=[]
+vr=[];order=[];oc=[];partition_rows=[]
+sub_keys=sub250_keys();sub_person_id=link.loc[sub_keys,'person_id'].to_numpy(str)
 for m in MODELS:
     x=draws_array(L.resp,m,'B',sub250_keys());y=draws_array(L.resp,m,'C',sub250_keys());ok=np.isfinite(x).all((1,2))&np.isfinite(y).all((1,2));x=x[ok];y=y[ok]
     D=y.mean(2)-x.mean(2);V=covariance(x)/5+covariance(y)/5;pt=components(D,V)
-    acc={k:[] for k in pt};rc,total=response_components(x,y);ra={k:[] for k in rc};shares={k:[] for k in rc}
-    for ids in cluster_indices(np.array(sub250_keys())[ok]):
-        v=components(D[ids],V[ids]);rv,rt=response_components(x[ids],y[ids])
-        for k in rc:ra[k].append(rv[k]);shares[k].append(rv[k]/rt)
-        for k in acc:acc[k].append(v[k])
+    acc={k:[] for k in pt}
+    for weight_batch in weights(sub_person_id[ok]):
+        for w in weight_batch:
+            ids=np.repeat(np.arange(len(D)),w.astype(int))
+            v=components(D[ids],V[ids])
+            for k in acc:acc[k].append(v[k])
     for k in pt:
         lo,hi=ci(acc[k]);vr.append({'model':m,'component':k,'n_respondents':len(D),'value':pt[k],'lo':lo,'hi':hi})
-    for k in rc:
-        lo,hi=ci(ra[k]);sl,sh=ci(shares[k]);response_rows.append({'model':m,'component':k,'value':rc[k],'lo':lo,'hi':hi,'total_single_call_variance':total,'share':rc[k]/total,'share_lo':sl,'share_hi':sh})
-    for c in 'BC':
-        ar=draws_array(L.resp,m,c,sub250_keys());valid=np.isfinite(ar).all(2);mean=np.nanmean(ar,axis=2);mean[~valid]=np.nan
-        ix=attrs.index.get_indexer(sub250_keys());ols=P['OLS (OOF)'][ix].copy();ols[~valid]=np.nan
-        averaged.append({'model':m,'condition':c,**{'llm_'+k:v[0] for k,v in metrics(H[ix],mean).items()},**{'ols_'+k:v[0] for k,v in metrics(H[ix],ols).items()}})
+    point_partition=single_call_partition(x,y);part_acc={k:[] for k in point_partition}
+    for weight_batch in weights(sub_person_id[ok]):
+        for w in weight_batch:
+            ids=np.repeat(np.arange(len(x)),w.astype(int))
+            boot_values=single_call_partition(x[ids],y[ids])
+            for k,value in boot_values.items():part_acc[k].append(value)
+    denom=point_partition['total_single_call_variance']
+    for component,value in point_partition.items():
+        if component=='total_single_call_variance':continue
+        lo,hi=ci(part_acc[component]);share=value/denom
+        share_boot=np.asarray(part_acc[component])/np.asarray(part_acc['total_single_call_variance'])
+        slo,shi=ci(share_boot)
+        partition_rows.append({'model':m,'component':component,'value':value,'lo':lo,'hi':hi,
+                               'total_single_call_variance':denom,'share':share,'share_lo':slo,'share_hi':shi})
     for c in 'ABCD':
-        x=draws_array(L.resp,m,c,sub250_keys());y=wide(L.resp,m,c,0,'R',sub250_keys(),block='rev').to_numpy(float)
-        with np.errstate(invalid='ignore'):
-            av=y-np.nanmean(x,axis=2);row=np.nanmean(av,axis=1)
-        available.append({'model':m,'condition':c,'n_records':int(np.isfinite(row).sum()),'signed_mean':np.nanmean(row)})
+        x=draws_array(L.resp,m,c,sub_keys);y=wide(L.resp,m,c,0,'R',sub_keys,block='rev').to_numpy(float)
         ok=np.isfinite(x).all((1,2))&np.isfinite(y).all(1);x=x[ok];y=y[ok];D=y-x.mean(2);cov=covariance(x);v=D.mean(1)
-        boot=np.array([v[ids].mean() for ids in cluster_indices(np.array(sub250_keys())[ok])])
+        boot=np.concatenate([w@v/w.sum(1) for w in weights(sub_person_id[ok])])
         lo,hi=ci(boot);order.append({'model':m,'condition':c,'n_respondents':len(v),'signed_mean':v.mean(),'lo':lo,'hi':hi,'mad_vs_five_draw_mean':abs(D).mean()})
         for factor in [.5,1.,2.]:
             pt=components(D,cov*(factor+1/5))
             for k,val in pt.items():oc.append({'model':m,'condition':c,'reverse_noise_multiplier':factor,'component':k,'value':val})
-save('response_variance_decomposition',response_rows);save('five_draw_fidelity',averaged);save('order_available_cases',available)
-save('format_decomposition',vr);save('order_effects',order);save('order_decomposition_sensitivity',oc)
+save('format_decomposition',vr);save('single_call_partition',partition_rows);save('order_effects',order);save('order_decomposition_sensitivity',oc)
 print('adjusted human mirror',flush=True)
 # OLS conditional mean differences after simultaneously mirroring party AND ideology;
 # other nine attributes unchanged. Descriptive, not causal. Same paired cells in both sources.
-elig=attrs.pid.isin(['Democrat','Republican']).to_numpy();ea=attrs[elig].copy();eh=H[elig];ne=len(ea)
+elig=attrs.pid.isin(['Democrat','Republican']).to_numpy();ea=attrs[elig].copy();eh=H[elig];ne=len(ea);eligible_people=person_id[elig]
 lev={c:sorted(ea[c].unique()) for c in ea.columns if c!='age'}
 em=ea.copy();em['pid']=em.pid.map({'Democrat':'Republican','Republican':'Democrat'})
 mp={'extremely liberal':'extremely conservative','liberal':'conservative','slightly liberal':'slightly conservative','moderate':'moderate','slightly conservative':'slightly liberal','conservative':'liberal','extremely conservative':'extremely liberal'}
@@ -245,16 +265,16 @@ pts={};acc={};miritems=[]
 for m,S in mirrorS.items():
     z,sm,hm=mirror_metrics(S,deltas,np.ones((1,ne)));pts[m]={k:v[0] for k,v in z.items()};acc[m]={k:[] for k in z}
     for t,key in enumerate(THERMS):miritems.append({'model':m,'item':key,'model_contrast':sm[0,t],'adjusted_human_contrast':hm[0,t]})
-rng=np.random.default_rng(SEED)
 # Bootstrap refits OLS and recomputes standardization on each resampled cohort.
-for b,ids in enumerate(cluster_indices(ea.index)):
-    w=np.bincount(ids,minlength=ne).astype(float);Q=np.empty_like(eh)
+for w_batch in weights(eligible_people):
+ for w in w_batch:
+    Q=np.empty_like(eh)
     for t in range(11):
         ok=np.isfinite(eh[:,t])&(w>0);xx=x[ok]*np.sqrt(w[ok,None]);yy=eh[ok,t]*np.sqrt(w[ok]);beta=np.linalg.lstsq(xx,yy,rcond=None)[0];Q[:,t]=dx@beta
     for m,S in mirrorS.items():
         z,_,_=mirror_metrics(S,Q,w[None,:])
         for k,v in z.items():acc[m][k].append(v[0])
-    if b%200==0:print('mirror bootstrap',b,flush=True)
+ if len(acc[MODELS[0]]['ratio_all'])%200==0:print('mirror bootstrap',len(acc[MODELS[0]]['ratio_all']),flush=True)
 mr=[]
 for m in MODELS:
     r={'model':m}
@@ -267,6 +287,6 @@ for t in range(11):
     ok=np.isfinite(eh[:,t]);qi[:,t]=(xmi-xi)@np.linalg.lstsq(xi[ok],eh[ok,t],rcond=None)[0]
 save('mirror_interaction_sensitivity',[{'model':m,**{k:v[0] for k,v in mirror_metrics(S,qi,np.ones((1,ne)))[0].items()}} for m,S in mirrorS.items()])
 save('party_ideology_support',ea.groupby(['pid','ideo']).size().reset_index(name='n'))
-manifest={'seed':SEED,'bootstrap_resamples':B,'n_calls':len(L.calls),'n_person_wave_records':N,'n_unique_people':6027,'n_subsample_unique_people':int(person_ids.loc[sub250_keys()].nunique()),'cv_folds':5,'cv_intervals':'Conditional on frozen out-of-fold predictions; no nested refit.', 'mirror_intervals':'Person-cluster bootstrap retaining all observed waves, refitting human OLS in each resample.', 'format':'Orthogonal moment decomposition; cross-item covariance retained; negative component estimates not truncated.', 'order':'Single reversed call; variance decomposition depends on reverse/original noise covariance assumption. Multipliers .5,1,2.', 'person_clusters_sha256':hashlib.sha256((ROOT/'data/person_clusters.csv').read_bytes()).hexdigest(),'inputs':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (RELEASE/'data').glob('*') if p.is_file()},'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+manifest={'seed':SEED,'bootstrap_resamples':B,'n_calls':len(L.calls),'n_person_wave_records':N,'n_people':int(pd.Series(person_id).nunique()),'linked_two_wave_people':int((pd.Series(person_id).value_counts()>1).sum()),'cv_folds':5,'fold_assignment':'Randomized person-level assignment; all observed waves of each person remain together.','bootstrap_unit':'Person; all observed waves retained.','cv_intervals':'Conditional on out-of-fold fits; no nested refit.','mirror_intervals':'Person-cluster bootstrap, refitting human OLS in each resample.','format':'Orthogonal moment decomposition; cross-item covariance retained; negative component estimates not truncated.','order':'Single reversed call; variance decomposition depends on reverse/original noise covariance assumption. Multipliers .5,1,2.','inputs':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (RELEASE/'data').glob('*') if p.is_file()},'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
 (OUT/'manifest.json').write_text(json.dumps(manifest,indent=2))
 print('DONE',flush=True)

@@ -2,7 +2,8 @@
 
 | File | Content |
 |---|---|
-| `respondents.csv` | One row per ANES person-wave record (N = 7,526; 6,027 distinct people, see `revision_round2/data/`): `external_key, year, age, raceth, gender, marst, education, income, ideo, regis, pid, interest`. The eleven attributes used to build each persona, recoded from the ANES 2016/2020 cumulative file. |
+| `respondents.csv` | One row per ANES person-wave record (N = 7,526; 6,027 distinct people, see `person_linkage.csv`): `external_key, year, age, raceth, gender, marst, education, income, ideo, regis, pid, interest`. The eleven attributes used to build each persona, recoded from the ANES 2016/2020 cumulative file. |
+| `person_linkage.csv` | Maps each `external_key` to a longitudinal `person_id` using the official ANES 2016–2020 panel identifiers (V160001, V200001): 7,526 records, 6,027 people, 1,499 people observed in both waves. Rebuilt by `analysis/build_person_linkage.py`. |
 | `human_benchmark.csv` | Long format `external_key, thermometer, human_value`: the real ANES feeling thermometer (0–100) for each respondent and group, where answered. |
 | `instrument.json` | The eleven items: key and exact question text. |
 | `subsample_250.json` | The fixed subsample of 250 Democrat/Republican respondents (stratified by year × party × ideology, seed 20261001) used for repeated draws and reversed order. |
@@ -32,6 +33,10 @@
 Ground truth: ANES Time Series Cumulative Data File (American National Election Studies, University of Michigan and
 Stanford University). Original study design: Bisbee, Clinton, Dorff, Kenkel & Larson (2024), *Political Analysis*
 32(4):401–416; please cite it and the original Dataverse release (DOI `10.7910/DVN/VPN481`).
+
+Person linkage: ANES 2016–2020–2024 Panel Merged File (May 19, 2026 version), available from the
+[ANES data center](https://electionstudies.org/data-center/2016-2020-2024-panel-merged-study/). The raw merged file is
+not redistributed here; `person_linkage.csv` and the script that rebuilds it (`analysis/build_person_linkage.py`) are included.
 
 ## Licensing and terms of use
 

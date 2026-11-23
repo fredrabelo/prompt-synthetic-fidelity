@@ -1,10 +1,11 @@
 # When Does Prompt Structure Matter? A Multi-Model Evaluation of Synthetic Survey Respondents
 
-Replication package for the paper of the same name (*Survey Practice*, Special Issue on Artificial Intelligence
-Assisted Surveys). The study asks whether the way respondent information is written into a prompt changes how well
-LLM-based synthetic respondents reproduce human survey answers. It uses 7,526 matched person-wave records (6,027 distinct people; see `revision_round2/`) from the ANES
-2016/2020 cumulative file (the ground truth of Bisbee et al. 2024), eleven feeling thermometers, and four models
-(Claude Haiku 4.5, Ministral 3B, Qwen3 32B, GPT-OSS-120B).
+Replication materials for the paper of the same name (*Survey Practice*, Special Issue on Artificial Intelligence
+Assisted Surveys; full citation to be added on publication). The study asks whether the way respondent information
+is written into a prompt changes how well LLM-based synthetic respondents reproduce human survey answers. It uses
+7,526 matched person-wave records (6,027 distinct people) from the ANES 2016/2020 cumulative file (the ground truth of
+Bisbee et al. 2024), eleven feeling thermometers, and four models (Claude Haiku 4.5, Ministral 3B, Qwen3 32B,
+GPT-OSS-120B).
 
 Prompt conditions (same facts, same questions; only the respondent block changes):
 
@@ -22,97 +23,64 @@ with the eleven items in reversed order).
 ## Repository layout
 
 ```
-data/        ANES respondent attributes and benchmark, instrument, protocol, and every model call
+data/        ANES respondent attributes and benchmark, person linkage, instrument, protocol, and every model call
 prompts/     Exact prompt construction (build_prompts.py) with hash verification against data/calls.csv
-analysis/    Pipeline that turns data/ into every table and figure in the paper (+ tests/)
-results/     Output of the pipeline (CSV tables, summary.json, results_manifest.json)
-figures/     Figures used in the paper
-revision_round2/   Second-revision analyses (November 2026): code, person linkage, results, figures
+analysis/    reanalyze.py (main analysis), build_figures.py, build_person_linkage.py, and the diagnostics pipeline
+results/     Output tables, person-level validation folds, prediction arrays, and run manifest
+figures/     Figures
+tests/       Integrity checks for the linkage, person-grouped folds, and variance partition
 ```
 
-See [`data/README.md`](data/README.md) for file formats and licenses.
+## Reproduce the reported analyses
 
-## Reproducing the results
+Requires Python 3.10 or later with NumPy, pandas, and matplotlib. From the repository root:
+
+```bash
+python -m pip install -r requirements.txt
+python prompts/build_prompts.py verify         # 130,772 calls, 28,693 distinct prompts, zero hash mismatches
+OPENBLAS_NUM_THREADS=1 python analysis/reanalyze.py     # all main tables -> results/
+python analysis/build_figures.py               # -> figures/
+python -m unittest discover -s tests -v
+```
+
+The analysis uses only the included frozen calls and data and makes no model API requests. It writes the reported
+tables and bootstrap intervals to `results/` using seed `20261111` and 1,000 person-cluster resamples. Validation
+folds are assigned to people, and every bootstrap resample draws people with all of their observed waves.
+Confidence intervals for the out-of-fold benchmarks condition on the fitted out-of-fold predictions (no nested refit).
+
+## Rebuild the cross-wave person linkage
+
+`data/person_linkage.csv` is the linkage used in the analysis. To regenerate it, download the May 19, 2026 ANES
+2016–2020–2024 Panel Merged File from the
+[ANES data center](https://electionstudies.org/data-center/2016-2020-2024-panel-merged-study/) and run:
+
+```bash
+python analysis/build_person_linkage.py --panel /path/to/anes_mergedfile_2016-2020-2024panel.csv
+```
+
+The script reads the public case identifiers `V160001` and `V200001` and checks the expected totals: 7,526
+person-wave records, 6,027 people, and 1,499 people linked across 2016 and 2020. The raw ANES file is not
+redistributed here; the generated mapping is included.
+
+## Output-validity and conditional-coefficient diagnostics
+
+The diagnostics reported in Supplement S8 (output validity by model and condition, source-by-attribute
+conditional coefficients) come from a separate pipeline:
 
 ```bash
 pip install -r requirements.txt
-Rscript -e 'install.packages(c("fixest", "dplyr", "tidyr", "readr"))'   # conditional fidelity
-
-python3 prompts/build_prompts.py verify        # every call's prompt hash is reproduced from respondents.csv
-python3 analysis/tests/test_pipeline.py        # pipeline checked against synthetic data with known answers
-python3 analysis/run_all.py --b 1000           # all analyses -> results/ (conditional fidelity step takes ~35 min)
-python3 analysis/build_tables.py results       # results/tables.md and results/facts.json
-python3 analysis/make_figures.py results       # -> figures/
+Rscript -e 'install.packages(c("fixest", "dplyr", "tidyr", "readr"))'   # conditional coefficients
+python analysis/tests/test_pipeline.py        # pipeline checked against synthetic data with known answers
+python analysis/run_all.py --b 1000           # -> results/a*_*.csv, results/conditional/ (the R step takes ~35 min)
+python analysis/build_tables.py results       # results/tables.md and results/facts.json
+python analysis/make_figures.py results
 ```
 
-`run_all.py` refuses incomplete or inconsistent data (unit counts, duplicates, composition of each block), writes
-`results/results_manifest.json` with the SHA-256 of every input file and analysis script, and uses a fixed seed
-(`--seed`, default 42). `analysis/README_ANALYSIS.md` defines every statistic.
+`run_all.py` refuses incomplete or inconsistent data, writes `results/results_manifest.json` with the SHA-256 of every
+input file and analysis script, and uses a fixed seed (`--seed`, default 42). `analysis/README_ANALYSIS.md` defines
+the statistics of this pipeline. Bootstrap bounds of the conditional-coefficient analysis (`results/conditional/`)
+come from a parallel R bootstrap and a rerun changes them by less than 0.5 percentage points; descriptive point
+estimates are exact. The tables in this pipeline resample records, not people, and are descriptive.
 
-All tables in `results/` regenerate exactly from the stored draws, except the bootstrap bounds of the conditional-fidelity
-analysis (`results/conditional/`): they come from a parallel R bootstrap and a rerun changes them by less than 0.5
-percentage points. The files shipped here are the ones reported in the paper; point estimates are exact.
-
-## Second revision (November 2026)
-
-`revision_round2/` adds further analyses of the same study. It leaves everything above untouched and
-reads the same frozen data (all 130,772 calls); it makes **no new LLM calls**. It adds:
-
-- out-of-fold benchmarks on the same eleven attributes (five-fold OLS and year-mean predictors) and per-item
-  fidelity (individual-level MAE, within-item SD ratio, correlation, rank and agreement statistics);
-- an exact per-item squared-error decomposition (bias, SD mismatch, imperfect association);
-- item-specific ICC(1), including the no-information condition A as a null check;
-- comparison of the mean of five calls with the OLS benchmark on the 250-partisan subsample;
-- a method-of-moments variance decomposition of the C - B contrast and its response-scale partition, with
-  generation noise estimated from the repeated draws;
-- signed order effects (reversed vs. five-draw original order), with available-case and noise-assumption sensitivity;
-- a regression-adjusted human party-and-ideology reference for the mirror condition (D);
-- **person-level grouping**: 1,499 people appear in both ANES waves, so the 7,526 records are 6,027 distinct people.
-  `revision_round2/data/person_clusters.csv` links the waves using the official ANES panel identifiers
-  (provenance in `revision_round2/data/README.md`). Cross-validation folds keep all waves of a person together and
-  all new bootstrap intervals resample people.
-
-Note: the first-version outputs above treat the 7,526 records as independent respondents (bootstrap over records) and
-use a pooled-SD dispersion statistic (`sd_pct`). The second-revision pipeline replaces both: it clusters by person and
-reports the mean of within-item SD ratios (`revision_round2/results/fidelity.csv`).
-
-```bash
-pip install -r requirements.txt                                      # numpy, pandas, matplotlib
-OPENBLAS_NUM_THREADS=1 python3 revision_round2/analysis/reanalyze.py   # -> revision_round2/results/ (seed 20261111, 1,000 bootstrap resamples)
-python3 revision_round2/analysis/test_reanalysis.py                    # numerical checks; prints PASS lines
-python3 revision_round2/analysis/make_figures.py                       # -> revision_round2/figures/
-```
-
-Run from the repository root (any working directory works). Results, with a manifest of input hashes, seed and
-settings (`results/manifest.json`), are in [`revision_round2/results/`](revision_round2/results/); see
-[`revision_round2/README.md`](revision_round2/README.md) for a file guide. The pipeline is also runnable from the
-replication archive, where the first-version data live in the sibling `github_release/` folder.
-
-## Reproducibility scope
-
-The responses in `data/calls.csv` were generated through Amazon Bedrock (Haiku 4.5, Qwen3 32B and GPT-OSS-120B in
-batch mode; Ministral 3B synchronously) at temperature 0.3 (GPT-OSS with reasoning effort `low`) with a forced
-tool call, no conversational memory and no retries of malformed outputs. The execution harness itself is not
-distributed. Everything needed to repeat the calls is: `prompts/build_prompts.py` (byte-exact system prompt,
-user messages and item order), `data/protocol.json` (model identifiers, parameters, tool schema) and
-`data/respondents.csv`. Re-running the models will not reproduce the stored draws (sampling is stochastic and hosted
-models change); the analysis reproduces from the stored draws.
-
-## License
-
-Code: MIT (`LICENSE`). Newly generated data, figures and tables: CC BY 4.0. ANES-derived fields remain subject to the
-ANES Terms of Use; details in `data/README.md`.
-
-## Citation
-
-Please cite the paper (details to be added on publication) and the original study:
-
-```bibtex
-@article{bisbee2024synthetic,
-  title={Synthetic Replacements for Human Survey Data? The Perils of Large Language Models},
-  author={Bisbee, James and Clinton, Joshua D and Dorff, Cassy and Kenkel, Brenton and Larson, Jennifer M},
-  journal={Political Analysis},
-  volume={32}, number={4}, pages={401--416}, year={2024},
-  doi={10.1017/pan.2024.5}
-}
-```
+The ANES-derived fields remain subject to ANES terms and citation requirements. See [`data/README.md`](data/README.md)
+for file formats, provenance, and licenses.
